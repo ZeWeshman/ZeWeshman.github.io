@@ -1,0 +1,133 @@
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #9f9f9f;
+    color: #ffffff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    flex-direction: column;
+    margin: 0;
+    padding: 20px;
+}
+
+button {
+    background-color: #005FFF;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover {
+    background-color: #004ed4;
+}
+
+h1 {
+    margin-bottom: 20px;
+    font-size: 2em;
+}
+
+.question {
+    margin-bottom: 20px;
+    border: 1px solid #ffffff;
+    padding: 15px;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 600px;
+    background-color: #1e1e1e;
+}
+
+.answers {
+    margin-bottom: 10px;
+}
+
+.btn {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #007bff;
+    border: none;
+    border-radius: 5px;
+    color: #fff;
+    cursor: pointer;
+}
+
+.btn:hover {
+    background-color: #0056b3;
+}
+
+.btn-answer {
+    cursor: pointer;
+    padding: 10px;
+    margin: 5px;
+    background-color: #333;
+    border: none;
+    border-radius: 5px;
+    color: #ffffff;
+    transition: background-color 0.3s;
+}
+
+.btn-answer:hover {
+    background-color: #555;
+}
+
+.wrong {
+    color: red;
+}
+
+.correct {
+    color: green;
+}
+
+#timer {
+    margin-bottom: 20px;
+}
+
+textarea {
+    width: 100%;
+    height: 150px;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    background-color: #333;
+    color: #ffffff;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.mode-buttons {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+}
+
+.mode-buttons button {
+    cursor: pointer;
+    width: 60px;
+    color: #FFF;
+    border-radius: 5px;
+    box-sizing: border-box;
+    font-size: 14px;
+    margin: 5px 0;
+    padding: 5px 10px;
+}
+
+.mode-buttons {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+}
+
+#darkModeButton {
+    background-color: #121212;
+}
+
+#greyModeButton {
+    background-color: #9f9f9f;
+}
+
+#lightModeButton {
+    background-color: #FFF;
+    color: #000;
+}

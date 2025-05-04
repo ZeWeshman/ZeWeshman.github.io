@@ -1,0 +1,104 @@
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #9f9f9f;
+    color: #FFFFFF;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 500px;
+    margin: auto;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+h1 {
+    text-align: center;
+    font-size: 2.5rem;
+}
+
+label {
+    font-weight: bold;
+    margin-top: 10px;
+    display: block;
+}
+
+select,
+input,
+textarea,
+button {
+    margin: 5px 0;
+    padding: 10px;
+    width: 100%;
+    border: 1px solid #666;
+    border-radius: 5px;
+    box-sizing: border-box;
+    font-size: 14px;
+}
+
+input[type="checkbox"] {
+    width: auto;
+    margin-left: 10px;
+}
+
+button {
+    background-color: #005FFF;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover {
+    background-color: #004ed4;
+}
+
+textarea {
+    cursor: default;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+}
+
+pre {
+    background: #303030;
+    color: #FFF;
+    padding: 10px;
+    border-radius: 5px;
+    overflow: auto;
+}
+
+.mode-buttons {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+}
+
+.mode-buttons button {
+    margin-right: 5px;
+    padding: 5px 10px;
+    cursor: pointer;
+    width: 60px;
+    color: #FFF;
+}
+
+#darkModeButton {
+    background-color: #121212;
+}
+
+#greyModeButton {
+    background-color: #9f9f9f;
+}
+
+#lightModeButton {
+    background-color: #FFF;
+    color: #000;
+}
