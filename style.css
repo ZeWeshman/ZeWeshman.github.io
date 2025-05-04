@@ -13,7 +13,7 @@
     --code-bg: #f4f4f4;
     --mode-button-bg: #121212;
     --mode-button-hover: #1a1a1a;
-    --mode-button-color: #e0e0e0;
+    --mode-button-color: #fff;
 }
 
 /* dark theme */
@@ -31,7 +31,7 @@
     --code-bg: #1f1f1f;
     --mode-button-bg: #f9f9f9;
     --mode-button-hover: #e0e0e0;
-    --mode-button-color: #ffffff;
+    --mode-button-color: #000;
 }
 
 /* grey theme */
@@ -49,7 +49,7 @@
     --code-bg: #b0b0b0;
     --mode-button-bg: #f9f9f9;
     --mode-button-hover: #e0e0e0;
-    --mode-button-color: #222;
+    --mode-button-color: #000;
 }
 
 /* Reset and base styling */
