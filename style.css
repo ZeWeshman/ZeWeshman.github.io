@@ -28,12 +28,12 @@
     --code-bg: #1f1f1f;
 }
 
-/* dark grey theme */
+/* grey theme */
 :root[data-theme="grey"] {
     --bg-color: #9f9f9f;
     --text-color: #ffffff;
-    --link-color: #005fa3;
-    --link-hover: #003f73;
+    --link-color: #3399cc;
+    --link-hover: #1a7ca3;
     --input-bg: #b5b5b5;
     --input-border: #888;
     --button-bg: #005fa3;
