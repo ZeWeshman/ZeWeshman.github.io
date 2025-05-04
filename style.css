@@ -13,6 +13,7 @@
     --code-bg: #f4f4f4;
     --mode-button-bg: #121212;
     --mode-button-hover: #1a1a1a;
+    --mode-button-color: #e0e0e0;
 }
 
 /* dark theme */
@@ -30,6 +31,7 @@
     --code-bg: #1f1f1f;
     --mode-button-bg: #f9f9f9;
     --mode-button-hover: #e0e0e0;
+    --mode-button-color: #ffffff;
 }
 
 /* grey theme */
@@ -46,7 +48,8 @@
     --blockquote-border: #005fa3;
     --code-bg: #b0b0b0;
     --mode-button-bg: #f9f9f9;
-    --mode-button-hover: ;
+    --mode-button-hover: #e0e0e0;
+    --mode-button-color: #222;
 }
 
 /* Reset and base styling */
@@ -167,7 +170,7 @@ button:hover, input[type="submit"]:hover, input[type="button"]:hover {
 /* Color mode button */
 .mode-button {
     background-color: var(--mode-button-bg);
-    color: #fff;
+    color: var(--mode_button-color);
     border: none;
     cursor: pointer;
     padding: 0.6em 1.2em;
