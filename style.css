@@ -28,19 +28,19 @@
     --code-bg: #1f1f1f;
 }
 
-/* light grey theme */
+/* dark grey theme */
 :root[data-theme="grey"] {
-    --bg-color: #e0e0e0;
-    --text-color: #333;
+    --bg-color: #9f9f9f;
+    --text-color: #ffffff;
     --link-color: #005fa3;
     --link-hover: #003f73;
-    --input-bg: #f5f5f5;
-    --input-border: #bbb;
-    --button-bg: #007acc;
-    --button-hover: #005fa3;
-    --table-header-bg: #dcdcdc;
-    --blockquote-border: #007acc;
-    --code-bg: #e8e8e8;
+    --input-bg: #b5b5b5;
+    --input-border: #888;
+    --button-bg: #005fa3;
+    --button-hover: #003f73;
+    --table-header-bg: #8f8f8f;
+    --blockquote-border: #005fa3;
+    --code-bg: #b0b0b0;
 }
 
 /* Reset and base styling */
