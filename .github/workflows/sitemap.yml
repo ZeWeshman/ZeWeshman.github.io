@@ -1,0 +1,85 @@
+name: Smart Sorted Sitemap Updater
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 0 * * 0'  # optional weekly auto-update
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate smart sorted sitemap.xml
+        run: |
+          mkdir temp_sitemap
+          if [ -f sitemap.xml ]; then
+            cp sitemap.xml temp_sitemap/old_sitemap.xml
+          fi
+
+          declare -A priorities
+          declare -A changefreqs
+
+          # Extract priority and changefreq from old sitemap if exists
+          if [ -f temp_sitemap/old_sitemap.xml ]; then
+            while IFS= read -r line; do
+              if [[ "$line" == *"<loc>"* ]]; then
+                current_url=$(echo "$line" | sed -n 's:.*<loc>\(.*\)</loc>.*:\1:p')
+              fi
+              if [[ "$line" == *"<priority>"* ]]; then
+                priorities["$current_url"]=$(echo "$line" | sed -n 's:.*<priority>\(.*\)</priority>.*:\1:p')
+              fi
+              if [[ "$line" == *"<changefreq>"* ]]; then
+                changefreqs["$current_url"]=$(echo "$line" | sed -n 's:.*<changefreq>\(.*\)</changefreq>.*:\1:p')
+              fi
+            done < temp_sitemap/old_sitemap.xml
+          fi
+
+          # Start new sitemap file
+          echo '<?xml version="1.0" encoding="UTF-8"?>' > sitemap.xml
+          echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' >> sitemap.xml
+
+          # Build list of all URLs
+          urls=()
+
+          # Add homepage manually
+          urls+=("https://zeweshman.github.io/")
+
+          # Find all HTML files and generate URLs
+          while IFS= read -r file; do
+            cleaned_url=$(echo "$file" | sed 's|^\./||' | sed 's|index\.html$||')
+            if [ "$cleaned_url" != "" ]; then
+              urls+=("https://zeweshman.github.io/${cleaned_url}")
+            fi
+          done < <(find . -name "*.html" ! -path "./node_modules/*" ! -path "./vendor/*")
+
+          # Sort URLs alphabetically
+          sorted_urls=$(printf '%s\n' "${urls[@]}" | sort)
+
+          # Now generate entries
+          for url in $sorted_urls; do
+            echo '<url>' >> sitemap.xml
+            echo "<loc>${url}</loc>" >> sitemap.xml
+            echo "<lastmod>$(date +%F)</lastmod>" >> sitemap.xml
+            if [ "${priorities[$url]}" ]; then
+              echo "<priority>${priorities[$url]}</priority>" >> sitemap.xml
+            fi
+            if [ "${changefreqs[$url]}" ]; then
+              echo "<changefreq>${changefreqs[$url]}</changefreq>" >> sitemap.xml
+            fi
+            echo '</url>' >> sitemap.xml
+          done
+
+          echo '</urlset>' >> sitemap.xml
+
+      - name: Commit updated sitemap.xml
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add sitemap.xml
+          git commit -m "Auto-update sorted sitemap.xml" || echo "No changes to commit"
+          git push
