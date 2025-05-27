@@ -63,7 +63,7 @@ jobs:
           # Sort URLs alphabetically
           sorted_urls=$(printf '%s\n' "${urls[@]}" | sort)
 
-          # Now generate entries
+          # Generate sitemap entries for found URLs
           for url in $sorted_urls; do
             echo '<url>' >> sitemap.xml
             echo "<loc>${url}</loc>" >> sitemap.xml
@@ -76,6 +76,29 @@ jobs:
             fi
             echo '</url>' >> sitemap.xml
           done
+
+          # Add extra URLs from extra_urls.txt with custom lastmod from specified file
+          if [ -f extra_urls.txt ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+              # Skip empty lines or lines starting with #
+              [[ -z "$line" || "$line" =~ ^# ]] && continue
+
+              url=$(echo "$line" | awk '{print $1}')
+              file_path=$(echo "$line" | awk '{print $2}')
+
+              if [ -f "$file_path" ]; then
+                lastmod_date=$(date -r "$file_path" +%F)
+              else
+                lastmod_date=$(date +%F)  # fallback to today if file missing
+              fi
+
+              echo '<url>' >> sitemap.xml
+              echo "<loc>${url}</loc>" >> sitemap.xml
+              echo "<lastmod>${lastmod_date}</lastmod>" >> sitemap.xml
+              # No priority/changefreq for these manual entries (add if you want)
+              echo '</url>' >> sitemap.xml
+            done < extra_urls.txt
+          fi
 
           echo '</urlset>' >> sitemap.xml
 
