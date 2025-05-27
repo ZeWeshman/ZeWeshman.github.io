@@ -77,15 +77,19 @@ jobs:
           echo '</urlset>' >> sitemap.xml
 
       - name: Commit and push sitemap.xml
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          if [ -z "${{ secrets.GH_TOKEN }}" ]; then
+            echo "❌ ERROR: GH_TOKEN is empty or not set."
+            exit 1
+          else
+            echo "✅ GH_TOKEN is set."
+          fi
+          
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
+          
+          git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}
+          
           git add sitemap.xml
           git commit -m "Auto-update sorted sitemap.xml" || echo "No changes to commit"
-        
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}
-          git push
-
-
+          git push origin HEAD:main
