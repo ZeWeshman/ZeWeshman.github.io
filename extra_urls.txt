@@ -1,0 +1,4 @@
+https://zeweshman.github.io/tumo_programs/?script=calc.js tumo_programs/calc.js
+https://zeweshman.github.io/tumo_programs/?script=ttt.js tumo_programs/ttt.js
+https://zeweshman.github.io/tumo_programs/?script=coffee.js tumo_programs/coffee.js
+https://zeweshman.github.io/tumo_programs/?script=hm.js tumo_programs/hm.js
