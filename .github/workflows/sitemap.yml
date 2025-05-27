@@ -1,5 +1,8 @@
 name: Smart Sorted Sitemap Updater
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -76,33 +79,10 @@ jobs:
 
           echo '</urlset>' >> sitemap.xml
 
-      - name: Commit and push sitemap.xml
+      - name: Commit updated sitemap.xml
         run: |
-          echo "🔍 Checking GH_TOKEN..."
-          if [ -z "${{ secrets.GH_TOKEN }}" ]; then
-            echo "❌ ERROR: GH_TOKEN is empty or not set."
-            exit 1
-          else
-            echo "✅ GH_TOKEN is set."
-          fi
-
-          echo "🔧 Configuring Git user..."
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          echo "🧾 Git user.name: $(git config user.name)"
-          echo "🧾 Git user.email: $(git config user.email)"
-
-          echo "🔁 Setting remote URL..."
-          git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}
-          echo "✅ Remote URL set (token hidden)."
-
-          echo "📄 Staging sitemap.xml..."
           git add sitemap.xml
-
-          echo "📝 Attempting commit..."
-          git commit -m "Auto-update sorted sitemap.xml" || echo "⚠️ No changes to commit."
-
-          echo "📍 Current branch: $(git branch --show-current)"
-
-          echo "🚀 Pushing changes..."
-          git push origin HEAD:main
+          git commit -m "Auto-update sorted sitemap.xml" || echo "No changes to commit"
+          git push
