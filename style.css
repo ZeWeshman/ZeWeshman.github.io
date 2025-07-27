@@ -170,7 +170,7 @@ button:hover, input[type="submit"]:hover, input[type="button"]:hover {
 /* Color mode button */
 .mode-button {
     background-color: var(--mode-button-bg);
-    color: var(--mode_button-color);
+    color: var(--mode-button-color);
     border: none;
     cursor: pointer;
     padding: 0.6em 1.2em;
