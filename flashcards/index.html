@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flashcards</title>
+    <!-- load generic CSS from parent folder -->
+    <link rel="stylesheet" href="../style.css">
+
+    <style>
+        /* Keep only page-specific rules that are not in style.css */
+
+        body {
+            /* don't override font-family or background set by style.css */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            text-align: center;
+        }
+
+        .card {
+            width: 380px;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--input-bg, #fff);
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+            cursor: pointer;
+            -webkit-user-select: none;
+            user-select: none;
+            padding: 20px;
+            font-size: 20px;
+            color: var(--text-color, #111);
+            transition: transform .25s ease, box-shadow .25s ease;
+        }
+
+        .card:active {
+            transform: scale(.996);
+        }
+
+        .small {
+            margin-top: 12px;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .controls {
+            margin-top: 14px;
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        /* Modal / JSON editor (page-specific) */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.35);
+            z-index: 50;
+        }
+
+        .modal {
+            background: var(--input-bg, #fff);
+            padding: 18px;
+            border-radius: 10px;
+            width: 680px;
+            max-width: calc(100% - 32px);
+            box-shadow: 0 12px 48px rgba(2, 6, 23, 0.3);
+        }
+
+        .modal h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+        }
+
+        .json-input {
+            width: 100%;
+            height: 160px;
+            font-family: monospace;
+            font-size: 13px;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid var(--input-border, #e5e7eb);
+            border-radius: 6px;
+        }
+
+        .modal-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .error {
+            color: #b91c1c;
+            font-size: 13px;
+            margin-top: 8px;
+            text-align: left;
+        }
+
+        .small-note {
+            font-size: 12px;
+            color: #6b7280;
+            text-align: left;
+            margin-top: 8px;
+        }
+
+        /* keep/hide controls (page-specific) */
+        .keep-hide {
+            margin-top: 12px;
+            display: none;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .keep-hide.show {
+            display: flex;
+        }
+
+        .keep-hide button {
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div id="card" class="card">Loading...</div>
+        <div class="small">Click the card to flip; click again to go to the next card.</div>
+        <div class="controls">
+            <button id="reloadBtn">Load JSON</button>
+            <button id="restartBtn">Restart</button>
+            <!-- new: theme toggle button styled by style.css (.mode-button) -->
+            <button id="themeToggleBtn" class="mode-button" type="button">Toggle theme</button>
+        </div>
+
+        <!-- keep/hide controls shown only when back is visible -->
+        <div id="keepHide" class="keep-hide" aria-hidden="true">
+            <button id="keepBtn">Keep</button>
+            <button id="hideBtn">Hide</button>
+        </div>
+
+        <!-- JSON modal (hidden by default) -->
+        <div id="jsonModal" class="modal-overlay" style="display:none;" aria-hidden="true">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="jsonTitle">
+                <h3 id="jsonTitle">Load cards JSON</h3>
+                <textarea id="jsonTextarea" class="json-input" spellcheck="false"></textarea>
+                <div class="small-note">Enter a JSON array of cards. Objects can use keys: front/back or q/a or
+                    question/answer. Example below.</div>
+                <div id="jsonError" class="error" style="display:none;"></div>
+                <div class="modal-controls">
+                    <button id="jsonCancel">Cancel</button>
+                    <button id="jsonLoad">Load</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Replace the simple cards/index/showingFront model with queue/kept/hidden + shuffle
+            let originalCards = []; // normalized cards as loaded (used for restart)
+            let queue = []; // cards for current pass (FIFO)
+            let kept = [];  // cards the user chose to keep for later
+            let hidden = []; // cards removed
+            let showingFront = true;
+
+            function shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            function normalizeCards(parsed) {
+                if (!Array.isArray(parsed)) return null;
+                const out = parsed.map((item, idx) => {
+                    if (typeof item === 'string') return { front: item, back: '', id: idx + '-' + Date.now() };
+                    if (item && typeof item === 'object') {
+                        const front = String(item.front ?? item.q ?? item.question ?? '');
+                        const back = String(item.back ?? item.a ?? item.answer ?? '');
+                        return { front, back, id: idx + '-' + Date.now() };
+                    }
+                    return null;
+                }).filter(Boolean);
+                return out.length ? out : null;
+            }
+
+            function initDeck(cardsArr) {
+                originalCards = cardsArr.map((c, i) => ({ ...c, id: c.id ?? (i + '-' + Date.now()) }));
+                queue = shuffle(originalCards.slice());
+                kept = [];
+                hidden = [];
+                showingFront = true;
+                renderCard();
+            }
+
+            // New: inline modal JSON handling (replaces prompt/alert)
+            const jsonModal = document.getElementById('jsonModal');
+            const jsonTextarea = document.getElementById('jsonTextarea');
+            const jsonError = document.getElementById('jsonError');
+            const jsonLoadBtn = document.getElementById('jsonLoad');
+            const jsonCancelBtn = document.getElementById('jsonCancel');
+
+            const sampleJSON = '[{"front":"Capital of France?","back":"Paris"},{"front":"2+2","back":"4"}]';
+
+            function openJsonModal(initial = sampleJSON) {
+                jsonError.style.display = 'none';
+                jsonError.textContent = '';
+                jsonTextarea.value = initial;
+                jsonModal.style.display = 'flex';
+                jsonModal.setAttribute('aria-hidden', 'false');
+                jsonTextarea.focus();
+                // place cursor at end
+                jsonTextarea.selectionStart = jsonTextarea.value.length;
+                jsonTextarea.selectionEnd = jsonTextarea.value.length;
+            }
+
+            function closeJsonModal() {
+                jsonModal.style.display = 'none';
+                jsonModal.setAttribute('aria-hidden', 'true');
+            }
+
+            function applyJsonFromTextarea() {
+                const raw = jsonTextarea.value.trim();
+                if (!raw) {
+                    jsonError.textContent = 'JSON is empty. Please paste an array of cards or cancel to use sample cards.';
+                    jsonError.style.display = 'block';
+                    return false;
+                }
+                try {
+                    const parsed = JSON.parse(raw);
+                    const normalized = normalizeCards(parsed);
+                    if (!normalized) throw new Error('Not a valid cards array');
+                    initDeck(normalized);
+                    closeJsonModal();
+                    return true;
+                } catch (e) {
+                    jsonError.textContent = 'Invalid JSON or format. Expected an array of card objects or strings.';
+                    jsonError.style.display = 'block';
+                    return false;
+                }
+            }
+
+            function loadDefaultCards() {
+                const defaults = [
+                    { front: "Sample: Capital of Italy?", back: "Rome" },
+                    { front: "Sample: 5×5", back: "25" }
+                ];
+                initDeck(normalizeCards(defaults));
+            }
+
+            function renderCard() {
+                const el = document.getElementById('card');
+                const keepHide = document.getElementById('keepHide');
+                if (!queue.length) {
+                    // no cards left in the current queue
+                    if (kept.length) {
+                        // start a new round with kept cards
+                        queue = shuffle(kept);
+                        kept = [];
+                        showingFront = true;
+                    } else {
+                        // finished everything
+                        el.textContent = 'Congrats — you finished all cards! 🎉';
+                        keepHide.classList.remove('show');
+                        keepHide.setAttribute('aria-hidden', 'true');
+                        return;
+                    }
+                }
+
+                const current = queue[0];
+                if (!current) {
+                    el.textContent = 'No cards';
+                    keepHide.classList.remove('show');
+                    keepHide.setAttribute('aria-hidden', 'true');
+                    return;
+                }
+
+                el.textContent = showingFront ? current.front || '(empty)' : current.back || '(empty)';
+                // show keep/hide only on back
+                if (!showingFront) {
+                    keepHide.classList.add('show');
+                    keepHide.setAttribute('aria-hidden', 'false');
+                } else {
+                    keepHide.classList.remove('show');
+                    keepHide.setAttribute('aria-hidden', 'true');
+                }
+            }
+
+            function advanceWithoutKeeping() {
+                // remove current from queue (hide it)
+                if (!queue.length) return;
+                const removed = queue.shift();
+                hidden.push(removed);
+                showingFront = true;
+                renderCard();
+            }
+
+            function keepCurrentCard() {
+                if (!queue.length) return;
+                const current = queue.shift();
+                kept.push(current);
+                showingFront = true;
+                renderCard();
+            }
+
+            const cardEl = document.getElementById('card');
+            cardEl.addEventListener('click', () => {
+                if (!queue.length && !kept.length) return;
+                if (showingFront) {
+                    showingFront = false;
+                } else {
+                    // second click on back acts as "hide" (advance without keeping)
+                    advanceWithoutKeeping();
+                }
+                renderCard();
+            });
+
+            // Hook up keep/hide buttons
+            document.getElementById('keepBtn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                keepCurrentCard();
+            });
+            document.getElementById('hideBtn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                advanceWithoutKeeping();
+            });
+
+            // Open modal when "Load JSON" clicked, prefill with current cards JSON
+            document.getElementById('reloadBtn').addEventListener('click', () => {
+                try {
+                    const currentJson = JSON.stringify(originalCards.length ? originalCards : JSON.parse(sampleJSON), null, 2);
+                    openJsonModal(currentJson);
+                } catch {
+                    openJsonModal(sampleJSON);
+                }
+            });
+
+            document.getElementById('restartBtn').addEventListener('click', () => {
+                if (originalCards.length) initDeck(originalCards);
+                else loadDefaultCards();
+            });
+
+            // Modal button handlers
+            jsonLoadBtn.addEventListener('click', () => applyJsonFromTextarea());
+            jsonCancelBtn.addEventListener('click', () => {
+                closeJsonModal();
+                // if no cards yet, load defaults
+                if (!originalCards.length) loadDefaultCards();
+            });
+
+            // support Enter+Ctrl/Cmd to submit from textarea
+            jsonTextarea.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    applyJsonFromTextarea();
+                }
+            });
+
+            // initialize on load
+            window.addEventListener('load', () => {
+                loadCardsFromModalOnStart();
+            });
+        </script>
+    </div>
+
+    <!-- load color mode toggler from parent folder -->
+    <script src="../color_mode_toggler.js" defer></script>
+
+    <script>
+        (function () {
+            const btn = document.getElementById('themeToggleBtn');
+            if (!btn) return;
+            function attach() {
+                if (typeof toggleTheme === 'function') btn.addEventListener('click', toggleTheme);
+                else window.setTimeout(attach, 50);
+            }
+            attach();
+        })();
+    </script>
+</body>
+
+</html>
