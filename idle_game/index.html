@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conveyor Idle Factory</title>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      text-align: center;
+      background: #0f1115;
+      color: #e6e6e6;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    canvas {
+      border: 1px solid #2a2f3a;
+      border-radius: 12px;
+      margin: 15px;
+      background: #151922;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .conveyorUI {
+      background: #161a22;
+      border: 1px solid #2a2f3a;
+      border-radius: 14px;
+      margin: 10px;
+      padding: 12px 14px;
+      display: inline-block;
+      min-width: 180px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    }
+
+    button {
+      margin: 4px;
+      padding: 7px 12px;
+      border-radius: 10px;
+      border: 1px solid #2a2f3a;
+      background: #1c2230;
+      color: #e6e6e6;
+      cursor: pointer;
+      transition: 0.15s ease;
+    }
+
+    button:hover {
+      background: #273149;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0px);
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    #unlockBtn {
+      background: #2b6fff;
+      border: none;
+      font-weight: 600;
+    }
+
+    #unlockBtn:hover {
+      background: #3b7dff;
+    }
+
+    #ui {
+      margin-top: 10px;
+    }
+
+    p {
+      opacity: 0.7;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Conveyor Factory Idle</h1>
+
+  <div>Coins: <span id="coins">0</span></div>
+
+  <button id="unlockBtn" type="button" onclick="unlockConveyor()">
+    Unlock Conveyor
+  </button>
+
+  <br>
+  <canvas id="game" width="600" height="300"></canvas>
+  <br>
+  <div id="ui"></div>
+
+  <br><br>
+  <p>Warning: the delete save button below will permanently erase your progress.</p>
+  <button type="button" onclick="resetSave()">Delete Save</button>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    let coins = 0;
+    let conveyors = [];
+    let lastAffordableState = "";
+    let uiDirty = true;
+
+    const MIN_DELAY = 500;
+    const LANE_HEIGHT = 60;
+    const MAX_ITEMS = 25;
+
+    // ---------------- ITEM ----------------
+    class Item {
+      constructor(x, conveyor) {
+        this.x = x;
+        this.conveyor = conveyor;
+        this.size = 18;
+      }
+
+      draw() {
+        ctx.fillStyle = "orange";
+        ctx.fillRect(this.x, this.conveyor.y, this.size, this.size);
+      }
+    }
+
+    // ---------------- CONVEYOR ----------------
+    class Conveyor {
+      constructor(tier) {
+        this.tier = tier;
+        this.y = (tier - 1) * LANE_HEIGHT;
+
+        this.baseSpeed = 1 + (tier - 1) * 0.2;
+        this.speedBoost = 0;
+        this.speed = this.baseSpeed;
+
+        this.items = [new Item(0, this)];
+
+        this.speedCost = 10 * Math.pow(3, tier - 1);
+        this.itemCost = 25 * Math.pow(3, tier - 1);
+        this.itemValue = 5 * Math.pow(2.5, tier - 1);
+
+        this.autobuyerUnlocked = false;
+        this.autobuyerOwned = false;
+        this.autobuyerDelay = 10000;
+        this.autobuyerTimer = 0;
+        this.autobuyerLevel = 0;
+        this.autobuyerBulk = 1;
+
+        // ---------------- NEW ITEM SYSTEM STATE ----------------
+        this.upgradeCounter = 0;
+        this.itemSpawnThreshold = 5;
+      }
+
+      update(dt) {
+        const delta = dt / 1000;
+
+        this.speedBoost *= 0.97;
+        this.speed = this.baseSpeed + this.speedBoost;
+
+        for (let item of this.items) {
+          item.x += this.speed * delta * 60;
+
+          if (item.x > canvas.width) {
+            coins += this.itemValue;
+            item.x = -20;
+          }
+        }
+
+        if (this.autobuyerOwned) {
+          this.autobuyerTimer += dt;
+
+          if (this.autobuyerTimer >= this.autobuyerDelay) {
+            this.autobuyerTimer = 0;
+
+            let didBuy = false;
+
+            for (let i = 0; i < this.autobuyerBulk; i++) {
+              if (coins >= this.speedCost) {
+                buySpeedUpgrade(this);
+                didBuy = true;
+              } else if (coins >= this.itemCost) {
+                buyItemUpgrade(this);
+                didBuy = true;
+              }
+            }
+
+            // only re-render UI if something changed
+            if (didBuy) {
+              renderUI();
+            }
+          }
+        }
+      }
+    }
+
+    conveyors.push(new Conveyor(1));
+
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseY = e.clientY - rect.top;
+
+      for (let i = 0; i < conveyors.length; i++) {
+        const c = conveyors[i];
+
+        const laneTop = c.y;
+        const laneBottom = c.y + LANE_HEIGHT;
+
+        if (mouseY >= laneTop && mouseY <= laneBottom) {
+          // temporary speed boost
+          c.speedBoost += 0.6;
+
+          // clamp so it doesn't explode visually
+          if (c.speedBoost > 10) c.speedBoost = 10;
+
+          break;
+        }
+      }
+    });
+    // ---------------- FUNCTIONS (GLOBAL FIX) ----------------
+
+    window.unlockConveyor = function () {
+      let cost = 100 * Math.pow(4, conveyors.length - 1);
+      if (coins >= cost) {
+        coins -= cost;
+
+        let c = new Conveyor(conveyors.length + 1);
+        conveyors.push(c);
+
+        if (conveyors.length > 1) {
+          conveyors[conveyors.length - 2].autobuyerUnlocked = true;
+        }
+
+        uiDirty = true;
+      }
+    };
+
+    window.buySpeedUpgrade = function (c) {
+      if (coins >= c.speedCost) {
+        coins -= c.speedCost;
+        c.baseSpeed += 0.4;
+        c.speedCost = Math.floor(c.speedCost * 1.45);
+        uiDirty = true;
+      }
+    };
+
+    window.buyItemUpgrade = function (c) {
+      if (coins >= c.itemCost) {
+        coins -= c.itemCost;
+
+        c.itemValue *= 1.25;
+        c.itemCost = Math.floor(c.itemCost * 1.55);
+
+        // ---------------- NEW DETERMINISTIC ITEM SYSTEM ----------------
+        c.upgradeCounter++;
+
+        if (c.items.length < MAX_ITEMS) {
+          if (c.upgradeCounter >= c.itemSpawnThreshold) {
+
+            c.upgradeCounter = 0;
+
+            c.items.push(new Item(Math.random() * -200, c));
+
+            // slowly reduce threshold (faster item growth over time)
+            if (c.itemSpawnThreshold > 2) {
+              c.itemSpawnThreshold -= 0.2;
+            }
+          }
+        }
+        // --------------------------------------------------------------
+
+        uiDirty = true;
+      }
+    };
+
+    window.buyAutobuyer = function (c) {
+      let cost = Math.floor(200 * Math.pow(3.3, c.tier - 1));
+      if (coins >= cost) {
+        coins -= cost;
+        c.autobuyerOwned = true;
+        uiDirty = true;
+      }
+    };
+
+    window.upgradeAutobuyer = function (c) {
+      let cost = Math.floor(150 * Math.pow(1.85, c.autobuyerLevel));
+      if (coins >= cost) {
+        coins -= cost;
+        c.autobuyerLevel++;
+
+        if (c.autobuyerDelay > MIN_DELAY) {
+          c.autobuyerDelay *= 0.9;
+          if (c.autobuyerDelay < MIN_DELAY) {
+            c.autobuyerDelay = MIN_DELAY;
+          }
+        } else {
+          c.autobuyerBulk++;
+        }
+
+        uiDirty = true;
+      }
+    };
+
+    function getAffordableState() {
+      let state = coins >= (100 * Math.pow(4, conveyors.length - 1));
+
+      for (let c of conveyors) {
+        state += "|" + (coins >= c.speedCost);
+        state += "|" + (coins >= c.itemCost);
+
+        if (c.autobuyerUnlocked && !c.autobuyerOwned) {
+          state += "|" + (coins >= Math.floor(200 * Math.pow(3.3, c.tier - 1)));
+        }
+
+        if (c.autobuyerOwned) {
+          state += "|" + (coins >= Math.floor(150 * Math.pow(1.85, c.autobuyerLevel)));
+        }
+      }
+
+      return state;
+    }
+
+    window.resetSave = function () {
+      if (confirm("Delete save?")) {
+        localStorage.removeItem("factorySave");
+        location.reload();
+      }
+    };
+
+    function saveGame() {
+      const data = {
+        version: 1,
+        coins: coins,
+        conveyors: conveyors.map(c => ({
+          tier: c.tier,
+          y: c.y,
+
+          baseSpeed: c.baseSpeed,
+          speedBoost: c.speedBoost,
+
+          speedCost: c.speedCost,
+          itemCost: c.itemCost,
+          itemValue: c.itemValue,
+
+          autobuyerUnlocked: c.autobuyerUnlocked,
+          autobuyerOwned: c.autobuyerOwned,
+
+          autobuyerDelay: c.autobuyerDelay,
+          autobuyerTimer: c.autobuyerTimer,
+
+          autobuyerLevel: c.autobuyerLevel,
+          autobuyerBulk: c.autobuyerBulk,
+
+          items: c.items.map(i => ({
+            x: i.x
+          }))
+        }))
+      };
+
+      localStorage.setItem("factorySave", JSON.stringify(data));
+    }
+
+    function loadGame() {
+      try {
+        const save = JSON.parse(localStorage.getItem("factorySave"));
+        if (!save) return;
+
+        // default version if missing (very old saves)
+        let version = save.version || 0;
+
+        coins = save.coins || 0;
+        conveyors = [];
+
+        // ---------------- VERSION UPGRADE PIPELINE ----------------
+
+        // v0 → v1 upgrade (legacy saves before versioning existed)
+        if (version < 1) {
+          console.warn("Upgrading save from v0 → v1");
+
+          save.version = 1;
+          save.conveyors = save.conveyors || [];
+        }
+
+        // ---------------- LOAD CURRENT VERSION (v1+) ----------------
+
+        for (let c of (save.conveyors || [])) {
+          let newC = new Conveyor(c.tier);
+
+          newC.y = c.y;
+
+          newC.baseSpeed = c.baseSpeed;
+          newC.speedBoost = c.speedBoost;
+
+          newC.speedCost = c.speedCost;
+          newC.itemCost = c.itemCost;
+          newC.itemValue = c.itemValue;
+
+          newC.autobuyerUnlocked = c.autobuyerUnlocked;
+          newC.autobuyerOwned = c.autobuyerOwned;
+
+          newC.autobuyerDelay = c.autobuyerDelay;
+          newC.autobuyerTimer = c.autobuyerTimer;
+
+          newC.autobuyerLevel = c.autobuyerLevel;
+          newC.autobuyerBulk = c.autobuyerBulk;
+
+          newC.items = (c.items || []).map(i => new Item(i.x, newC));
+
+          conveyors.push(newC);
+        }
+
+        if (conveyors.length === 0) {
+          conveyors.push(new Conveyor(1));
+        }
+
+      } catch (e) {
+        console.warn("Failed to load save:", e);
+      }
+    }
+
+    setInterval(saveGame, 5000);
+    loadGame();
+    // ---------------- UI ----------------
+    function renderUI() {
+      uiDirty = false;
+
+      const ui = document.getElementById("ui");
+      ui.innerHTML = "";
+
+      const unlockBtn = document.getElementById("unlockBtn");
+      const unlockCost = 100 * Math.pow(4, conveyors.length - 1);
+
+      unlockBtn.innerText = `Unlock Conveyor (${unlockCost})`;
+      unlockBtn.disabled = coins < unlockCost;
+
+      conveyors.forEach((c, i) => {
+        const div = document.createElement("div");
+        div.className = "conveyorUI";
+
+        const canBuySpeed = coins >= c.speedCost;
+        const canBuyItem = coins >= c.itemCost;
+
+        div.innerHTML = `
+      <b>Conveyor ${c.tier}</b><br>
+      Value: ${c.itemValue.toFixed(1)}<br>
+      Speed: ${c.baseSpeed.toFixed(1)}<br>
+
+      <button type="button"
+        onclick="buySpeedUpgrade(conveyors[${i}])"
+        ${canBuySpeed ? "" : "disabled"}>
+        Speed (${c.speedCost})
+      </button>
+
+      <button type="button"
+        onclick="buyItemUpgrade(conveyors[${i}])"
+        ${canBuyItem ? "" : "disabled"}>
+        Value (${c.itemCost})
+      </button>
+    `;
+
+        if (c.autobuyerUnlocked) {
+          if (!c.autobuyerOwned) {
+            const cost = Math.floor(200 * Math.pow(3.3, c.tier - 1));
+            div.innerHTML += `
+          <br><br>
+          <button type="button"
+            onclick="buyAutobuyer(conveyors[${i}])"
+            ${coins >= cost ? "" : "disabled"}>
+            Buy Autobuyer (${cost})
+          </button>
+        `;
+          } else {
+            const cost = Math.floor(150 * Math.pow(1.85, c.autobuyerLevel));
+
+            div.innerHTML += `
+          <br><br>
+          Autobuyer: ${(c.autobuyerDelay / 1000).toFixed(2)}s<br>
+          Bulk: ${c.autobuyerBulk}<br>
+
+          <button type="button"
+            onclick="upgradeAutobuyer(conveyors[${i}])"
+            ${coins >= cost ? "" : "disabled"}>
+            Upgrade (${cost})
+          </button>
+        `;
+          }
+        }
+
+        ui.appendChild(div);
+      });
+    }
+
+    // ---------------- LOOP ----------------
+    let lastTime = performance.now();
+
+    function loop(now) {
+      let dt = now - lastTime;
+      lastTime = now;
+
+      conveyors.forEach(c => c.update(dt));
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      conveyors.forEach(c => {
+        ctx.fillStyle = "#ddd";
+        ctx.fillRect(0, c.y + 10, canvas.width, 10);
+        c.items.forEach(item => item.draw());
+      });
+
+      document.getElementById("coins").innerText = Math.floor(coins);
+
+      // ---------------- UI LOGIC FIX ----------------
+      const currentState = getAffordableState();
+
+      if (uiDirty || currentState !== lastAffordableState) {
+        renderUI();
+        lastAffordableState = currentState;
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    renderUI();
+    loop(performance.now());
+  </script>
+
+</body>
+
+</html>
