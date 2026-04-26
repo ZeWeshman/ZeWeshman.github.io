@@ -91,6 +91,7 @@
   <h1>Conveyor Factory Idle</h1>
 
   <div>Coins: <span id="coins">0</span></div>
+  <div>Coins/sec: <span id="cps">0</span></div>
 
   <button id="unlockBtn" type="button" onclick="unlockConveyor()">
     Unlock Conveyor
@@ -117,6 +118,26 @@
     const MIN_DELAY = 500;
     const LANE_HEIGHT = 60;
     const MAX_ITEMS = 25;
+    const MAX_CONVEYORS = 6;
+
+    let coinHistory = [];
+
+    function updateCPS() {
+      const now = performance.now();
+
+      coinHistory.push({ t: now, c: coins });
+
+      // keep last 5 seconds
+      coinHistory = coinHistory.filter(p => now - p.t <= 5000);
+
+      if (coinHistory.length < 2) return 0;
+
+      const a = coinHistory[0];
+      const b = coinHistory[coinHistory.length - 1];
+
+      const cps = (b.c - a.c) / ((b.t - a.t) / 1000);
+      return Math.max(0, cps);
+    }
 
     // ---------------- ITEM ----------------
     class Item {
@@ -166,14 +187,25 @@
         this.speedBoost *= 0.97;
         this.speed = this.baseSpeed + this.speedBoost;
 
+        let producedThisFrame = 0;
+
         for (let item of this.items) {
           item.x += this.speed * delta * 60;
 
           if (item.x > canvas.width) {
             coins += this.itemValue;
+            producedThisFrame += this.itemValue;
+
+            flashGain(this.itemValue);
             item.x = -20;
           }
         }
+
+        this.coinsProduced += producedThisFrame;
+
+        // --- CPS tracking per conveyor (smoothed) ---
+        this.lastCoinsProduced += (this.coinsProduced - this.lastCoinsProduced) * 0.1;
+        this.cps = this.lastCoinsProduced * (1000 / 1000); // approx per second
 
         if (this.autobuyerOwned) {
           this.autobuyerTimer += dt;
@@ -193,10 +225,7 @@
               }
             }
 
-            // only re-render UI if something changed
-            if (didBuy) {
-              renderUI();
-            }
+            if (didBuy) renderUI();
           }
         }
       }
@@ -228,7 +257,10 @@
     // ---------------- FUNCTIONS (GLOBAL FIX) ----------------
 
     window.unlockConveyor = function () {
+      if (conveyors.length >= MAX_CONVEYORS) return;
+
       let cost = 100 * Math.pow(4, conveyors.length - 1);
+
       if (coins >= cost) {
         coins -= cost;
 
@@ -309,6 +341,52 @@
       }
     };
 
+    function flashGain(amount) {
+      const el = document.createElement("div");
+      el.innerText = `+${fmt(amount)}`;
+      el.style.position = "fixed";
+      el.style.left = "50%";
+      el.style.top = "40%";
+      el.style.transform = "translateX(-50%)";
+      el.style.color = "gold";
+      el.style.fontSize = "18px";
+      el.style.pointerEvents = "none";
+      el.style.transition = "0.4s ease";
+      el.style.opacity = "1";
+
+      document.body.appendChild(el);
+
+      requestAnimationFrame(() => {
+        el.style.transform = "translateX(-50%) translateY(-20px)";
+        el.style.opacity = "0";
+      });
+
+      setTimeout(() => el.remove(), 450);
+    }
+    function fmt(n) {
+      if (!isFinite(n)) return "∞";
+
+      const abs = Math.abs(n);
+
+      if (abs < 1000) return Math.floor(n).toString();
+
+      const units = [
+        "K", "M", "B", "T",
+        "Qa", "Qi", "Sx", "Sp",
+        "Oc", "No", "Dc"
+      ];
+
+      let tier = Math.floor(Math.log10(abs) / 3);
+
+      if (tier <= 0) return Math.floor(n).toString();
+      if (tier > units.length) {
+        return n.toExponential(2);
+      }
+
+      const scaled = n / Math.pow(1000, tier);
+      return scaled.toFixed(2).replace(/\.00$/, "") + units[tier - 1];
+    }
+
     function getAffordableState() {
       let state = coins >= (100 * Math.pow(4, conveyors.length - 1));
 
@@ -370,64 +448,75 @@
 
     function loadGame() {
       try {
-        const save = JSON.parse(localStorage.getItem("factorySave"));
-        if (!save) return;
+        const raw = localStorage.getItem("factorySave");
+        if (!raw) return;
 
-        // default version if missing (very old saves)
+        const save = JSON.parse(raw);
+
         let version = save.version || 0;
 
         coins = save.coins || 0;
         conveyors = [];
 
-        // ---------------- VERSION UPGRADE PIPELINE ----------------
-
-        // v0 → v1 upgrade (legacy saves before versioning existed)
+        // ---------------- VERSION MIGRATION ----------------
         if (version < 1) {
-          console.warn("Upgrading save from v0 → v1");
-
+          console.warn("Upgrading save v0 → v1");
           save.version = 1;
           save.conveyors = save.conveyors || [];
         }
 
-        // ---------------- LOAD CURRENT VERSION (v1+) ----------------
+        const saved = save.conveyors || [];
 
-        for (let c of (save.conveyors || [])) {
-          let newC = new Conveyor(c.tier);
+        // ---------------- LOAD + VALIDATE ----------------
+        for (let c of saved) {
+          const newC = new Conveyor(c.tier);
 
           newC.y = c.y;
 
-          newC.baseSpeed = c.baseSpeed;
-          newC.speedBoost = c.speedBoost;
+          newC.baseSpeed = c.baseSpeed ?? newC.baseSpeed;
+          newC.speedBoost = c.speedBoost ?? 0;
 
-          newC.speedCost = c.speedCost;
-          newC.itemCost = c.itemCost;
-          newC.itemValue = c.itemValue;
+          newC.speedCost = c.speedCost ?? newC.speedCost;
+          newC.itemCost = c.itemCost ?? newC.itemCost;
+          newC.itemValue = c.itemValue ?? newC.itemValue;
 
-          newC.autobuyerUnlocked = c.autobuyerUnlocked;
-          newC.autobuyerOwned = c.autobuyerOwned;
+          newC.autobuyerUnlocked = !!c.autobuyerUnlocked;
+          newC.autobuyerOwned = !!c.autobuyerOwned;
 
-          newC.autobuyerDelay = c.autobuyerDelay;
-          newC.autobuyerTimer = c.autobuyerTimer;
+          newC.autobuyerDelay = c.autobuyerDelay ?? newC.autobuyerDelay;
+          newC.autobuyerTimer = c.autobuyerTimer ?? 0;
 
-          newC.autobuyerLevel = c.autobuyerLevel;
-          newC.autobuyerBulk = c.autobuyerBulk;
+          newC.autobuyerLevel = c.autobuyerLevel ?? 0;
+          newC.autobuyerBulk = c.autobuyerBulk ?? 1;
 
           newC.items = (c.items || []).map(i => new Item(i.x, newC));
 
           conveyors.push(newC);
-        }
 
-        if (conveyors.length === 0) {
-          conveyors.push(new Conveyor(1));
-        }
+          // ---------------- HARD SAFETY CAP ----------------
+          // HARD ENFORCE MAX CONVEYORS AFTER LOAD
+          if (conveyors.length > MAX_CONVEYORS) {
+            conveyors.length = MAX_CONVEYORS;
+          }
 
+          // ---------------- ENSURE VALID STATE ----------------
+          if (conveyors.length === 0) {
+            conveyors.push(new Conveyor(1));
+          }
+
+          // ---------------- CLEAN INVALID EXCESS STATE ----------------
+          // (important for future version changes or corrupted saves)
+          conveyors = conveyors.slice(0, MAX_CONVEYORS);
+        }
       } catch (e) {
-        console.warn("Failed to load save:", e);
+        console.warn("Save load failed:", e);
+        conveyors = [new Conveyor(1)];
       }
     }
 
-    setInterval(saveGame, 5000);
     loadGame();
+    setInterval(saveGame, 5000);
+
     // ---------------- UI ----------------
     function renderUI() {
       uiDirty = false;
@@ -436,11 +525,36 @@
       ui.innerHTML = "";
 
       const unlockBtn = document.getElementById("unlockBtn");
-      const unlockCost = 100 * Math.pow(4, conveyors.length - 1);
 
-      unlockBtn.innerText = `Unlock Conveyor (${unlockCost})`;
-      unlockBtn.disabled = coins < unlockCost;
+      const max = MAX_CONVEYORS;
+      const atCap = conveyors.length >= max;
 
+      const nextCost = atCap ? 0 : 100 * Math.pow(4, conveyors.length - 1);
+      const remaining = atCap ? 0 : Math.max(0, nextCost - coins);
+
+      // ---------------- PROGRESSION GOAL DISPLAY ----------------
+      const goalDiv = document.createElement("div");
+      goalDiv.style.margin = "10px";
+      goalDiv.style.opacity = "0.85";
+      goalDiv.innerHTML = atCap
+        ? `Max progression reached`
+        : `
+          Next Conveyor:<br>
+          <b>${fmt(remaining)}</b> coins needed
+          <div style="opacity:0.6;font-size:12px;margin-top:4px">
+            Progress feel: ${Math.max(0, Math.min(100, (coins / nextCost) * 100)).toFixed(0)}%
+          </div>
+        `;
+
+      ui.appendChild(goalDiv);
+
+      // ---------------- UNLOCK BUTTON ----------------
+      unlockBtn.disabled = atCap || coins < nextCost;
+      unlockBtn.innerText = atCap
+        ? `Max Conveyors Reached (${max})`
+        : `Unlock Conveyor (${fmt(nextCost)})`;
+
+      // ---------------- CONVEYOR UI ----------------
       conveyors.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "conveyorUI";
@@ -449,32 +563,35 @@
         const canBuyItem = coins >= c.itemCost;
 
         div.innerHTML = `
-      <b>Conveyor ${c.tier}</b><br>
-      Value: ${c.itemValue.toFixed(1)}<br>
-      Speed: ${c.baseSpeed.toFixed(1)}<br>
+          <b>Conveyor ${c.tier}</b><br><br>
 
-      <button type="button"
-        onclick="buySpeedUpgrade(conveyors[${i}])"
-        ${canBuySpeed ? "" : "disabled"}>
-        Speed (${c.speedCost})
-      </button>
+          Value: ${fmt(c.itemValue)} → ${fmt(c.itemValue * 1.25)} (+25%)<br>
+          Speed: ${c.baseSpeed.toFixed(1)} → ${(c.baseSpeed + 0.4).toFixed(1)} (+0.4)<br>
+          Income: ~${fmt((c.itemValue * c.items.length) / 3)}/s<br><br>
 
-      <button type="button"
-        onclick="buyItemUpgrade(conveyors[${i}])"
-        ${canBuyItem ? "" : "disabled"}>
-        Value (${c.itemCost})
-      </button>
-    `;
+          <button type="button"
+            onclick="buySpeedUpgrade(conveyors[${i}])"
+            ${canBuySpeed ? "" : "disabled"}>
+            Speed (${fmt(c.speedCost)})
+          </button>
+
+          <button type="button"
+            onclick="buyItemUpgrade(conveyors[${i}])"
+            ${canBuyItem ? "" : "disabled"}>
+            Value (${fmt(c.itemCost)})
+          </button>
+        `;
 
         if (c.autobuyerUnlocked) {
           if (!c.autobuyerOwned) {
             const cost = Math.floor(200 * Math.pow(3.3, c.tier - 1));
+
             div.innerHTML += `
           <br><br>
           <button type="button"
             onclick="buyAutobuyer(conveyors[${i}])"
             ${coins >= cost ? "" : "disabled"}>
-            Buy Autobuyer (${cost})
+            Buy Autobuyer (${fmt(cost)})
           </button>
         `;
           } else {
@@ -488,7 +605,7 @@
           <button type="button"
             onclick="upgradeAutobuyer(conveyors[${i}])"
             ${coins >= cost ? "" : "disabled"}>
-            Upgrade (${cost})
+            Upgrade (${fmt(cost)})
           </button>
         `;
           }
@@ -515,7 +632,8 @@
         c.items.forEach(item => item.draw());
       });
 
-      document.getElementById("coins").innerText = Math.floor(coins);
+      document.getElementById("coins").innerText = fmt(coins);
+      document.getElementById("cps").innerText = fmt(updateCPS().toFixed(1));
 
       // ---------------- UI LOGIC FIX ----------------
       const currentState = getAffordableState();
